@@ -5,7 +5,7 @@ from telethon import TelegramClient, events, Button
 from telethon.tl.functions.messages import ForwardMessagesRequest
 from telethon.errors import RPCError
 #₹
-==== CONFIG ====
+#==== CONFIG ====
 
 api_id = 23416992 
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe' 
