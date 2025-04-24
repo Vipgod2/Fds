@@ -1,7 +1,7 @@
 import asyncio
 import re
 from telethon import TelegramClient, events, Button
-from telethon.tl.functions.messages import ForwardMessagesRequest
+from telethon.tl.functions.messages import ForwardMessagesRequest, UpdatePinnedMessage
 
 # ==== CONFIG ====
 api_id = 23416992
@@ -13,7 +13,19 @@ bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
 
 forward_sessions = {}
 
-@bot.on(events.NewMessage(pattern=r'/fwd ([\S]+)(?:\s+(\d+))?(?:\s+(\d+))?'))
+@bot.on(events.NewMessage(pattern='/start'))
+async def welcome(event):
+    if event.is_private:
+        msg = await event.respond(
+            "**Welcome to Kidilo Bot!**\n\nPress the button below to start forwarding.",
+            buttons=[Button.inline("Forward Messages", b'start_forward_pm')]
+        )
+        try:
+            await bot(UpdatePinnedMessage(peer=event.chat_id, id=msg.id, silent=True))
+        except:
+            pass
+
+@bot.on(events.NewMessage(pattern=r'/kidilo ([\S]+)(?:\s+(\d+))?(?:\s+(\d+))?'))
 async def start_forward(event):
     sender = await event.get_sender()
     chat_input = event.pattern_match.group(1)
@@ -21,11 +33,10 @@ async def start_forward(event):
     end_id = event.pattern_match.group(3)
 
     if not start_id:
-        await event.reply("❌ Usage: `/fwd <chat or link> <start_id> <end_id>`")
+        await event.reply("❌ Usage: `/kidilo <chat/link> <start_id> <end_id>`")
         return
 
     try:
-        # Resolve chat
         if chat_input.startswith("https://t.me/"):
             match = re.match(r'https?://t\.me/([^/]+)/(\d+)', chat_input)
             if not match:
@@ -40,10 +51,10 @@ async def start_forward(event):
 
         src_entity = await bot.get_entity(chat)
 
-        # Permission check
-        permissions = await bot.get_permissions(event.chat_id, sender.id)
-        if not permissions.is_admin:
-            return await event.reply("❌ You must be an admin to use this command.")
+        if event.is_group or event.is_channel:
+            permissions = await bot.get_permissions(event.chat_id, sender.id)
+            if not permissions.is_admin:
+                return await event.reply("❌ You must be an admin to use this command.")
 
         forward_sessions[sender.id] = {
             "src_entity": src_entity,
@@ -52,7 +63,7 @@ async def start_forward(event):
             "dst_chat": event.chat_id
         }
 
-        await event.reply(
+        msg = await event.reply(
             f"Forward messages from `{start_id}` to `{end_id}` from `{chat}`?",
             buttons=[
                 [Button.inline("✅ Yes", b'start_forward')],
@@ -60,9 +71,13 @@ async def start_forward(event):
             ]
         )
 
+        try:
+            await bot(UpdatePinnedMessage(peer=event.chat_id, id=msg.id, silent=True))
+        except:
+            pass
+
     except Exception as e:
         await event.reply(f"❌ Error resolving source: `{e}`")
-
 
 @bot.on(events.CallbackQuery(data=b'start_forward'))
 async def confirm_forward(event):
@@ -94,12 +109,16 @@ async def confirm_forward(event):
     except Exception as e:
         await bot.send_message(dst, f"❌ Forwarding failed: {e}")
 
-
 @bot.on(events.CallbackQuery(data=b'cancel_forward'))
 async def cancel_forward(event):
     sender_id = event.sender_id
     forward_sessions.pop(sender_id, None)
     await event.edit("❌ Forwarding cancelled.")
+
+@bot.on(events.CallbackQuery(data=b'start_forward_pm'))
+async def from_welcome_forward(event):
+    msg = await event.respond("Please use `/kidilo <chat> <start_id> <end_id>` to begin.")
+    await event.edit("Instruction sent.")
 
 print("Bot running...")
 bot.run_until_disconnected()
