@@ -1,8 +1,8 @@
 import asyncio
 import re
+
 from telethon import TelegramClient, events, Button
-from telethon.tl.functions.messages
-import ForwardMessagesRequest 
+from telethon.tl.functions.messages import ForwardMessagesRequest
 from telethon.errors import RPCError
 #₹
 ==== CONFIG ====
