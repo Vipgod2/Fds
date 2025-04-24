@@ -2,7 +2,9 @@ import asyncio import re from telethon import TelegramClient, events, Button fro
 
 ==== CONFIG ====
 
-api_id = 23416992 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe' bot_token = 'YOUR_BOT_TOKEN'
+api_id = 23416992 
+api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe' 
+bot_token = '7666600493:AAGCCLNZQspatmzwylmcpM-AQUo1FI2FYMA'
 
 ===============
 
