@@ -1,7 +1,7 @@
 import asyncio
 import re
 from telethon import TelegramClient, events, Button
-from telethon.tl.functions.messages import ForwardMessagesRequest, UpdatePinnedMessage
+from telethon.tl.functions.messages import ForwardMessagesRequest, UpdatePinnedMessageRequest
 
 # ==== CONFIG ====
 api_id = 23416992
@@ -21,7 +21,7 @@ async def welcome(event):
             buttons=[Button.inline("Forward Messages", b'start_forward_pm')]
         )
         try:
-            await bot(UpdatePinnedMessage(peer=event.chat_id, id=msg.id, silent=True))
+            await bot(UpdatePinnedMessageRequest(peer=event.chat_id, id=msg.id, silent=True))
         except:
             pass
 
@@ -72,7 +72,7 @@ async def start_forward(event):
         )
 
         try:
-            await bot(UpdatePinnedMessage(peer=event.chat_id, id=msg.id, silent=True))
+            await bot(UpdatePinnedMessageRequest(peer=event.chat_id, id=msg.id, silent=True))
         except:
             pass
 
