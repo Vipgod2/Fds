@@ -6,24 +6,21 @@ from telethon.tl.functions.messages import ForwardMessagesRequest, UpdatePinnedM
 # ==== CONFIG ====
 api_id = 23416992
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
-bot_token = '7666600493:AAGCCLNZQspatmzwylmcpM-AQUo1FI2FYMA'  # Replace with your actual bot token
+bot_token = '7666600493:AAGCCLNZQspatmzwylmcpM-AQUo1FI2FYMA'  # Replace with your bot token
 # ===============
 
 bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
 
 forward_sessions = {}
+forwarding_in_progress = {}
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def welcome(event):
     if event.is_private:
-        msg = await event.respond(
-            "**Welcome to Kidilo Bot!**\n\nPress the button below to start forwarding.",
-            buttons=[Button.inline("Forward Messages", b'start_forward_pm')]
+        await event.respond(
+            "**Hey there!**\n\nI'm **Kidilo Bot**, here to help you forward messages from other chats.\n\nPress the button below to get started!",
+            buttons=[Button.inline("Start Forwarding", b'start_forward_pm')]
         )
-        try:
-            await bot(UpdatePinnedMessageRequest(peer=event.chat_id, id=msg.id, silent=True))
-        except:
-            pass
 
 @bot.on(events.NewMessage(pattern=r'/kidilo ([\S]+)(?:\s+(\d+))?(?:\s+(\d+))?'))
 async def start_forward(event):
@@ -66,15 +63,17 @@ async def start_forward(event):
         msg = await event.reply(
             f"Forward messages from `{start_id}` to `{end_id}` from `{chat}`?",
             buttons=[
-                [Button.inline("✅ Yes", b'start_forward')],
+                [Button.inline("✅ Start Forwarding", b'start_forward')],
                 [Button.inline("❌ Cancel", b'cancel_forward')]
             ]
         )
 
-        try:
-            await bot(UpdatePinnedMessageRequest(peer=event.chat_id, id=msg.id, silent=True))
-        except:
-            pass
+        # Pin only in group/channel
+        if not event.is_private:
+            try:
+                await bot(UpdatePinnedMessageRequest(peer=event.chat_id, id=msg.id, silent=True))
+            except:
+                pass
 
     except Exception as e:
         await event.reply(f"❌ Error resolving source: `{e}`")
@@ -85,16 +84,23 @@ async def confirm_forward(event):
     if sender_id not in forward_sessions:
         return await event.answer("Session expired or not found.", alert=True)
 
-    session = forward_sessions.pop(sender_id)
+    session = forward_sessions[sender_id]
     src = session["src_entity"]
     dst = session["dst_chat"]
     start = session["start_id"]
     end = session["end_id"]
 
-    await event.edit(f"⏩ Forwarding messages from {start} to {end}...")
+    msg = await event.edit(
+        f"⏩ Forwarding messages from {start} to {end}...",
+        buttons=[[Button.inline("❌ Cancel", b'cancel_forward')]]
+    )
+
+    forwarding_in_progress[sender_id] = True
 
     try:
         for msg_id in range(start, end + 1):
+            if not forwarding_in_progress.get(sender_id):
+                break
             try:
                 await bot(ForwardMessagesRequest(
                     from_peer=src,
@@ -105,20 +111,26 @@ async def confirm_forward(event):
             except Exception as e:
                 print(f"Failed to forward {msg_id}: {e}")
                 continue
-        await bot.send_message(dst, "✅ Forwarding complete.")
-    except Exception as e:
-        await bot.send_message(dst, f"❌ Forwarding failed: {e}")
+
+        if forwarding_in_progress.get(sender_id):
+            await bot.send_message(dst, "✅ Forwarding complete.")
+        else:
+            await bot.send_message(dst, "⛔ Forwarding cancelled.")
+
+    finally:
+        forward_sessions.pop(sender_id, None)
+        forwarding_in_progress.pop(sender_id, None)
 
 @bot.on(events.CallbackQuery(data=b'cancel_forward'))
 async def cancel_forward(event):
     sender_id = event.sender_id
-    forward_sessions.pop(sender_id, None)
+    forwarding_in_progress[sender_id] = False
     await event.edit("❌ Forwarding cancelled.")
 
 @bot.on(events.CallbackQuery(data=b'start_forward_pm'))
 async def from_welcome_forward(event):
-    msg = await event.respond("Please use `/kidilo <chat> <start_id> <end_id>` to begin.")
-    await event.edit("Instruction sent.")
+    msg = await event.respond("Use this command to start:\n\n`/kidilo <chat> <start_id> <end_id>`")
+    await event.edit("Instructions sent!")
 
 print("Bot running...")
 bot.run_until_disconnected()
