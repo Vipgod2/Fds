@@ -4,7 +4,7 @@ from telethon import TelegramClient, events, Button
 from telethon.tl.functions.messages
 import ForwardMessagesRequest 
 from telethon.errors import RPCError
-
+#₹
 ==== CONFIG ====
 
 api_id = 23416992 
