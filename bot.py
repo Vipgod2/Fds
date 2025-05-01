@@ -7,7 +7,7 @@ from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
 # ==== CONFIG ====
 api_id = 23416992
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
-bot_token = '7666600493:AAGCCLNZQspatmzwylmcpM-AQUo1FI2FYMA'
+bot_token = '8123499594:AAFI7dUqkOh95EQdB1FzQygJTKHAKRgABWw'
 LOG_GROUP_ID = -1002530580931 # Replace with your log group ID
 # ===============
 
