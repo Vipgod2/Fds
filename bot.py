@@ -16,15 +16,6 @@ bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
 forward_sessions = {}
 forwarding_in_progress = {}
 
-@bot.on(events.NewMessage(pattern='/start'))
-async def welcome(event):
-    if event.is_private:
-        msg = await event.respond(
-            "**Hey!**\nSend:\n`/kidilo <chat> <start_id> <end_id>`\nOr just:\n`/kidilo <chat>` to forward the latest media."
-        )
-        await asyncio.sleep(8)
-        await msg.delete()
-        await event.delete()
 
 @bot.on(events.NewMessage(pattern=r'/kidilo ([\S]+)(?:\s+(\d+))?(?:\s+(\d+))?'))
 async def start_forward(event):
