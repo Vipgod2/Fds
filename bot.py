@@ -8,7 +8,7 @@ from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
 api_id = 23416992
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
 bot_token = '7666600493:AAGCCLNZQspatmzwylmcpM-AQUo1FI2FYMA'
-LOG_GROUP_ID = -1001234567890  # Replace with your log group ID
+LOG_GROUP_ID = -1002530580931 # Replace with your log group ID
 # ===============
 
 bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
