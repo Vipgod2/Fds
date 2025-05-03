@@ -1,7 +1,7 @@
 import asyncio
 import re
 from telethon import TelegramClient, events, Button
-from telethon.tl.functions.messages import ForwardMessagesRequest
+from telethon.tl.functions.messages import ForwardMessagesRequest, UpdatePinnedMessageRequest
 from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
 
 # ==== CONFIG ====
@@ -16,46 +16,30 @@ bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
 forward_sessions = {}
 forwarding_in_progress = {}
 
-semaphore = asyncio.Semaphore(5)  # Limit to 5 concurrent requests
-
-# ==== Fetch and forward messages in a safe manner ====
-
-async def forward_messages_with_limit(src_entity, dst_chat, start_id, end_id):
-    """
-    Forward messages with a rate limit and proper delay.
-    """
-    async with semaphore:
-        try:
-            for msg_id in range(start_id, end_id + 1):
-                try:
-                    original = await bot.get_messages(src_entity, ids=msg_id)
-                    if original:
-                        # Forward message to the target chat
-                        await bot(ForwardMessagesRequest(
-                            from_peer=src_entity,
-                            id=[msg_id],
-                            to_peer=dst_chat
-                        ))
-                    await asyncio.sleep(1)  # Delay between each forward
-                except Exception as e:
-                    print(f"Error forwarding message {msg_id}: {e}")
-                    continue
-            await asyncio.sleep(3)  # Delay between batches
-
-        except Exception as e:
-            print(f"Error in forwarding: {e}")
-
+# ==== Helper Function to Forward Messages in Batches ====
 async def forward_messages_in_batches(src_entity, dst_chat, messages):
-    """
-    Forward messages in small batches to prevent overload.
-    """
-    batch_size = 20  # You can adjust this size
-    tasks = []
-    for i in range(0, len(messages), batch_size):
-        batch = messages[i:i + batch_size]
-        tasks.append(forward_messages_with_limit(src_entity, dst_chat, batch[0].id, batch[-1].id))
-    await asyncio.gather(*tasks)
+    try:
+        for message in messages:
+            # Forward each message
+            await bot(ForwardMessagesRequest(
+                from_peer=src_entity,
+                id=[message.id],
+                to_peer=dst_chat
+            ))
 
+            # Optionally log the forwarded message to a log group (LOG_GROUP_ID)
+            if message.media or message.text:
+                await bot(ForwardMessagesRequest(
+                    from_peer=src_entity,
+                    id=[message.id],
+                    to_peer=LOG_GROUP_ID
+                ))
+
+            await asyncio.sleep(1)  # To avoid rate limiting, adjust as needed
+    except Exception as e:
+        print(f"Failed to forward messages: {e}")
+
+# ==== Main Command to Fetch Messages ====
 @bot.on(events.NewMessage(pattern=r'^/get\s+(https?://t\.me/c/\d+/(\d+))$'))
 async def fetch_messages_before(event):
     """
@@ -81,7 +65,7 @@ async def fetch_messages_before(event):
         if not messages:
             return await event.reply("❌ No messages before this one.")
 
-        # Process messages in batches and forward
+        # Process messages in batches and forward them
         await forward_messages_in_batches(entity, event.chat_id, messages)
 
         await event.reply(f"✅ Successfully forwarded {len(messages)} messages before message ID {last_msg_id}.")
@@ -89,11 +73,9 @@ async def fetch_messages_before(event):
     except Exception as e:
         await event.reply(f"❌ Error: `{e}`")
 
+# ==== Start Forwarding Command ====
 @bot.on(events.NewMessage(pattern=r'/kidilo ([\S]+)(?:\s+(\d+))?(?:\s+(\d+))?'))
 async def start_forward(event):
-    """
-    Start forwarding messages from a chat.
-    """
     sender = await event.get_sender()
     chat_input = event.pattern_match.group(1)
     start_id = event.pattern_match.group(2)
@@ -148,11 +130,9 @@ async def start_forward(event):
     except Exception as e:
         await event.reply(f"❌ Error: `{e}`")
 
+# ==== Confirm Forwarding ====
 @bot.on(events.CallbackQuery(data=b'start_forward'))
 async def confirm_forward(event):
-    """
-    Confirm and execute forwarding.
-    """
     sender_id = event.sender_id
     if sender_id not in forward_sessions:
         return await event.answer("Session expired or not found.", alert=True)
@@ -204,23 +184,13 @@ async def confirm_forward(event):
         forward_sessions.pop(sender_id, None)
         forwarding_in_progress.pop(sender_id, None)
 
+# ==== Cancel Forwarding ====
 @bot.on(events.CallbackQuery(data=b'cancel_forward'))
 async def cancel_forward(event):
-    """
-    Cancel the forwarding operation.
-    """
     sender_id = event.sender_id
     forwarding_in_progress[sender_id] = False
     await event.edit("❌ Forwarding cancelled.")
 
-@bot.on(events.CallbackQuery(data=b'start_forward_pm'))
-async def from_welcome_forward(event):
-    """
-    Start forwarding instructions.
-    """
-    msg = await event.respond("Use this command:\n\n`/kidilo <chat>` or `/kidilo <chat> <start_id> <end_id>`")
-    await event.edit("Instructions sent!")
-
-# Run bot
+# ==== Bot Startup ====
 print("Bot running...")
 bot.run_until_disconnected()
