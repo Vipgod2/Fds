@@ -8,7 +8,7 @@ from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
 api_id = 23416992
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
 bot_token = '8123499594:AAEKktirHvejXL5-T8fhq211b7jmTML1kG0'
-LOG_GROUP_ID = -1002500724893 # Replace with your log group ID
+LOG_GROUP_ID = -1002500724893  # Replace with your log group ID
 # ===============
 
 bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
@@ -39,7 +39,6 @@ async def start_forward(event):
 
         src_entity = await bot.get_entity(chat)
 
-        # If no start_id, fetch latest message with media or text
         if not start_id:
             messages = await bot.get_messages(src_entity, limit=10)
             latest_msg = next((m for m in messages if m.media or m.message), None)
@@ -73,6 +72,7 @@ async def start_forward(event):
     except Exception as e:
         await event.reply(f"❌ Error: `{e}`")
 
+
 @bot.on(events.CallbackQuery(data=b'start_forward'))
 async def confirm_forward(event):
     sender_id = event.sender_id
@@ -103,7 +103,6 @@ async def confirm_forward(event):
                     to_peer=dst
                 ))
 
-                # Fetch original message to check media
                 original = await bot.get_messages(src, ids=msg_id)
                 if original and (original.media or original.message):
                     await bot(ForwardMessagesRequest(
@@ -126,16 +125,74 @@ async def confirm_forward(event):
         forward_sessions.pop(sender_id, None)
         forwarding_in_progress.pop(sender_id, None)
 
+
 @bot.on(events.CallbackQuery(data=b'cancel_forward'))
 async def cancel_forward(event):
     sender_id = event.sender_id
     forwarding_in_progress[sender_id] = False
     await event.edit("❌ Forwarding cancelled.")
 
+
 @bot.on(events.CallbackQuery(data=b'start_forward_pm'))
 async def from_welcome_forward(event):
     msg = await event.respond("Use this command:\n\n`/kidilo <chat>` or `/kidilo <chat> <start_id> <end_id>`")
     await event.edit("Instructions sent!")
+
+
+# ========== NEW /get command ==========
+
+@bot.on(events.NewMessage(pattern=r'^/get\s+(https?://t\.me/c/\d+/(\d+))$'))
+async def fetch_messages_before(event):
+    link = event.pattern_match.group(1)
+    last_msg_id = int(event.pattern_match.group(2))
+
+    match = re.match(r'https://t\.me/c/(\d+)/(\d+)', link)
+    if not match:
+        return await event.reply("❌ Invalid link format.")
+
+    internal_id = int(match.group(1))
+    chat_id = -1000000000000 + internal_id  # Convert to full chat ID
+
+    try:
+        # Get the entity (chat) for the provided link
+        entity = await bot.get_entity(chat_id)
+
+        # Fetch all messages up to the provided message ID, excluding the last one
+        messages = await bot.get_messages(entity, limit=100, max_id=last_msg_id - 1)
+
+        if not messages:
+            return await event.reply("❌ No messages before this one.")
+
+        # Forward messages in smaller batches to avoid rate limits
+        batch_size = 20  # Adjust this size as needed
+        for i in range(0, len(messages), batch_size):
+            batch = messages[i:i + batch_size]
+
+            # Forward each batch of messages
+            for msg in batch:
+                try:
+                    await bot(ForwardMessagesRequest(
+                        from_peer=entity,
+                        id=[msg.id],
+                        to_peer=event.chat_id
+                    ))
+
+                    # Optionally, add a small delay between each forward to avoid rate limiting
+                    await asyncio.sleep(1)  # Sleep 1 second between forwards
+
+                except Exception as e:
+                    print(f"Error forwarding message {msg.id}: {e}")
+                    continue
+
+            # Add a longer sleep between batches
+            await asyncio.sleep(3)  # Sleep 3 seconds between batches
+
+        await event.reply(f"✅ Successfully forwarded {len(messages)} messages before message ID {last_msg_id}.")
+
+    except Exception as e:
+        await event.reply(f"❌ Error: `{e}`")
+
+# ========== END /get command ==========
 
 print("Bot running...")
 bot.run_until_disconnected()
