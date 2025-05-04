@@ -1,7 +1,7 @@
 import asyncio
 import re
 from telethon import TelegramClient, events, Button
-from telethon.tl.functions.messages import ForwardMessagesRequest, UpdatePinnedMessageRequest
+from telethon.tl.functions.messages import GetMessagesRequest
 
 # ==== CONFIG ====
 api_id = 23416992
@@ -11,20 +11,18 @@ bot_token = 'YOUR_BOT_TOKEN'  # Replace with your bot token
 
 bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
 
-forward_sessions = {}
-forwarding_in_progress = {}
-
+# Welcome message when /start is called
 @bot.on(events.NewMessage(pattern='/start'))
 async def welcome(event):
     if event.is_private:
         await event.respond(
-            "**Hey there!**\n\nI'm **Kidilo Bot**, here to help you forward messages from other chats.\n\nPress the button below to get started!",
-            buttons=[Button.inline("Start Forwarding", b'start_forward_pm')]
+            "**Hey there!**\n\nI'm **Kidilo Bot**, here to help you fetch full messages from public channels.\n\nPress the button below to get started!",
+            buttons=[Button.inline("Start Fetching", b'start_fetch_pm')]
         )
 
+# Command to fetch the message using a link
 @bot.on(events.NewMessage(pattern=r'/kidilo (https?://t\.me/\S+)'))
-async def fetch_message_ids(event):
-    # Extract the t.me link
+async def fetch_message(event):
     chat_input = event.pattern_match.group(1)
 
     if chat_input.startswith("https://t.me/"):
@@ -32,19 +30,28 @@ async def fetch_message_ids(event):
         if match:
             chat = match.group(1)
             message_id = int(match.group(2))
-            
+
             try:
                 # Get the entity for the channel
                 src_entity = await bot.get_entity(chat)
-                
-                # Forward the specific message
-                await bot(ForwardMessagesRequest(
-                    from_peer=src_entity,
-                    id=[message_id],
-                    to_peer=event.chat_id
+
+                # Fetch the full message (including text and media)
+                messages = await bot(GetMessagesRequest(
+                    peer=src_entity,
+                    id=[message_id]
                 ))
 
-                await event.reply(f"Message {message_id} forwarded from `{chat}`.")
+                # Retrieve the full message content
+                full_message = messages.messages[0]
+
+                # Send the full message content (text and media) to the chat
+                message_text = full_message.text if full_message.text else "No text content."
+                await event.reply(f"**Full Message Content from `{chat}`**:\n\n{message_text}")
+
+                # If the message has media, notify the user
+                if full_message.media:
+                    await event.reply("This message contains media, such as images or videos.")
+
             except Exception as e:
                 await event.reply(f"❌ Error: `{e}`")
         else:
@@ -52,115 +59,12 @@ async def fetch_message_ids(event):
     else:
         await event.reply("❌ Please provide a valid `t.me/username/message_id` link.")
 
-@bot.on(events.CallbackQuery(data=b'start_forward_pm'))
+# Start fetching instructions
+@bot.on(events.CallbackQuery(data=b'start_fetch_pm'))
 async def from_welcome_forward(event):
     msg = await event.respond("Use this command to start:\n\n`/kidilo https://t.me/HDthought/582574`")
     await event.edit("Instructions sent!")
 
-@bot.on(events.NewMessage(pattern=r'/kidilo ([\S]+)(?:\s+(\d+))?(?:\s+(\d+))?'))
-async def start_forward(event):
-    sender = await event.get_sender()
-    chat_input = event.pattern_match.group(1)
-    start_id = event.pattern_match.group(2)
-    end_id = event.pattern_match.group(3)
-
-    if not start_id:
-        await event.reply("❌ Usage: `/kidilo <chat/link> <start_id> <end_id>`")
-        return
-
-    try:
-        if chat_input.startswith("https://t.me/"):
-            match = re.match(r'https?://t\.me/([^/]+)/(\d+)', chat_input)
-            if not match:
-                return await event.reply("❌ Invalid message link format.")
-            chat = match.group(1)
-            start_id = int(match.group(2))
-            end_id = int(end_id) if end_id else start_id
-        else:
-            chat = int(chat_input) if chat_input.lstrip("-").isdigit() else chat_input
-            start_id = int(start_id)
-            end_id = int(end_id) if end_id else start_id
-
-        src_entity = await bot.get_entity(chat)
-
-        if event.is_group or event.is_channel:
-            permissions = await bot.get_permissions(event.chat_id, sender.id)
-            if not permissions.is_admin:
-                return await event.reply("❌ You must be an admin to use this command.")
-
-        forward_sessions[sender.id] = {
-            "src_entity": src_entity,
-            "start_id": start_id,
-            "end_id": end_id,
-            "dst_chat": event.chat_id
-        }
-
-        msg = await event.reply(
-            f"Forward messages from `{start_id}` to `{end_id}` from `{chat}`?",
-            buttons=[
-                [Button.inline("✅ Start Forwarding", b'start_forward')],
-                [Button.inline("❌ Cancel", b'cancel_forward')]
-            ]
-        )
-
-        # Pin only in group/channel
-        if not event.is_private:
-            try:
-                await bot(UpdatePinnedMessageRequest(peer=event.chat_id, id=msg.id, silent=True))
-            except:
-                pass
-
-    except Exception as e:
-        await event.reply(f"❌ Error resolving source: `{e}`")
-
-@bot.on(events.CallbackQuery(data=b'start_forward'))
-async def confirm_forward(event):
-    sender_id = event.sender_id
-    if sender_id not in forward_sessions:
-        return await event.answer("Session expired or not found.", alert=True)
-
-    session = forward_sessions[sender_id]
-    src = session["src_entity"]
-    dst = session["dst_chat"]
-    start = session["start_id"]
-    end = session["end_id"]
-
-    msg = await event.edit(
-        f"⏩ Forwarding messages from {start} to {end}...",
-        buttons=[[Button.inline("❌ Cancel", b'cancel_forward')]]
-    )
-
-    forwarding_in_progress[sender_id] = True
-
-    try:
-        for msg_id in range(start, end + 1):
-            if not forwarding_in_progress.get(sender_id):
-                break
-            try:
-                await bot(ForwardMessagesRequest(
-                    from_peer=src,
-                    id=[msg_id],
-                    to_peer=dst
-                ))
-                await asyncio.sleep(1.2)
-            except Exception as e:
-                print(f"Failed to forward {msg_id}: {e}")
-                continue
-
-        if forwarding_in_progress.get(sender_id):
-            await bot.send_message(dst, "✅ Forwarding complete.")
-        else:
-            await bot.send_message(dst, "⛔ Forwarding cancelled.")
-
-    finally:
-        forward_sessions.pop(sender_id, None)
-        forwarding_in_progress.pop(sender_id, None)
-
-@bot.on(events.CallbackQuery(data=b'cancel_forward'))
-async def cancel_forward(event):
-    sender_id = event.sender_id
-    forwarding_in_progress[sender_id] = False
-    await event.edit("❌ Forwarding cancelled.")
-
+# Running the bot
 print("Bot running...")
 bot.run_until_disconnected()
