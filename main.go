@@ -10,7 +10,7 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
 )
 
-var botToken = "YOUR_BOT_TOKEN"
+var botToken = "7666600493:AAFnPpaPZXweKkG0IigZPf3F2G_1JksGfjY"
 
 var (
 	isForwarding    bool
