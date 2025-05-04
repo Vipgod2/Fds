@@ -2,6 +2,7 @@ import asyncio
 import re
 from telethon import TelegramClient, events, Button
 from telethon.tl.functions.messages import GetMessagesRequest
+from telethon.tl.types import PeerChannel
 
 # ==== CONFIG ====
 api_id = 23416992
@@ -35,9 +36,12 @@ async def fetch_message(event):
                 # Get the entity for the channel
                 src_entity = await bot.get_entity(chat)
 
+                # Use PeerChannel correctly for the request
+                peer = PeerChannel(src_entity.id)
+
                 # Fetch the full message (including text and media)
                 messages = await bot(GetMessagesRequest(
-                    peer=src_entity,  # Corrected argument name
+                    peer=peer,  # Correct usage with PeerChannel
                     id=[message_id]
                 ))
 
