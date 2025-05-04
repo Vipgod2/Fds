@@ -37,7 +37,7 @@ async def fetch_message(event):
 
                 # Fetch the full message (including text and media)
                 messages = await bot(GetMessagesRequest(
-                    peer=src_entity,
+                    peer=src_entity,  # Corrected argument name
                     id=[message_id]
                 ))
 
