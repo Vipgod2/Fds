@@ -6,7 +6,7 @@ from telethon.tl.functions.messages import GetMessagesRequest
 # ==== CONFIG ====
 api_id = 23416992
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
-bot_token = 'YOUR_BOT_TOKEN'  # Replace with your bot token
+bot_token = '7666600493:AAFnPpaPZXweKkG0IigZPf3F2G_1JksGfjY'  # Replace with your bot token
 # ===============
 
 bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
