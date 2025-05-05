@@ -1,113 +1,145 @@
-package main
+import asyncio
+import re
+from telethon import TelegramClient, events, Button
+from telethon.errors import FloodWaitError
+from telethon.tl.functions.messages import ForwardMessagesRequest, UpdatePinnedMessageRequest
 
-import (
-	"fmt"
-	"log"
-	"strconv"
-	"strings"
-	"time"
+# ==== CONFIG ====
+api_id = 23416992
+api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
+bot_token = '7666600493:AAGCCLNZQspatmzwylmcpM-AQUo1FI2FYMA'
+# ===============
 
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api"
-)
+bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
 
-var botToken = "7666600493:AAFnPpaPZXweKkG0IigZPf3F2G_1JksGfjY"
+forward_sessions = {}
+forwarding_in_progress = {}
 
-var (
-	isForwarding    bool
-	cancelChannelID int64
-)
+@bot.on(events.NewMessage(pattern='/start'))
+async def welcome(event):
+    if event.is_private:
+        await event.respond(
+            "**Hey there!**\n\nI'm **Kidilo Bot**, here to help you forward messages from other chats.\n\nPress the button below to get started!",
+            buttons=[Button.inline("Start Forwarding", b'start_forward_pm')]
+        )
 
-func main() {
-	startBot()
-}
+@bot.on(events.NewMessage(pattern=r'/kidilo ([\S]+)(?:\s+(\d+))?(?:\s+(\d+))?'))
+async def start_forward(event):
+    sender = await event.get_sender()
+    chat_input = event.pattern_match.group(1)
+    start_id = event.pattern_match.group(2)
+    end_id = event.pattern_match.group(3)
 
-func startBot() {
-	bot, err := tgbotapi.NewBotAPI(botToken)
-	if err != nil {
-		log.Fatal(err)
-	}
-	bot.Debug = true
+    try:
+        if chat_input.startswith("https://t.me/"):
+            match = re.match(r'https?://t\.me/([^/]+)/(\d+)', chat_input)
+            if not match:
+                return await event.reply("❌ Invalid message link format.")
+            chat = match.group(1)
+            start_id = int(match.group(2))
 
-	fmt.Printf("Authorized on account %s\n", bot.Self.UserName)
+            src_entity = await bot.get_entity(chat)
+            messages = await bot.get_messages(src_entity, limit=1)
+            if not messages:
+                return await event.reply("❌ Couldn't retrieve latest message.")
+            end_id = messages[0].id
+        else:
+            chat = int(chat_input) if chat_input.lstrip("-").isdigit() else chat_input
+            if not start_id:
+                return await event.reply("❌ Usage: `/kidilo <chat> <start_id> <end_id>`")
+            start_id = int(start_id)
+            end_id = int(end_id) if end_id else start_id
+            src_entity = await bot.get_entity(chat)
 
-	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
+        if event.is_group or event.is_channel:
+            permissions = await bot.get_permissions(event.chat_id, sender.id)
+            if not permissions.is_admin:
+                return await event.reply("❌ You must be an admin to use this command.")
 
-	updates, _ := bot.GetUpdatesChan(u)
+        forward_sessions[sender.id] = {
+            "src_entity": src_entity,
+            "start_id": start_id,
+            "end_id": end_id,
+            "dst_chat": event.chat_id
+        }
 
-	for update := range updates {
-		if update.Message != nil && update.Message.IsCommand() {
-			if update.Message.Command() == "kidilo" {
-				handleCommand(update, bot)
-			}
-		} else if update.CallbackQuery != nil {
-			handleCallbackQuery(update.CallbackQuery, bot)
-		}
-	}
-}
+        msg = await event.reply(
+            f"⏩ Forward messages from `{chat}` ID `{start_id}` to `{end_id}`?",
+            buttons=[
+                [Button.inline("✅ Start Forwarding", b'start_forward')],
+                [Button.inline("❌ Cancel", b'cancel_forward')]
+            ]
+        )
 
-func handleCommand(update tgbotapi.Update, bot *tgbotapi.BotAPI) {
-	args := strings.Fields(update.Message.CommandArguments())
-	if len(args) != 1 {
-		bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Usage: /kidilo <message_link>"))
-		return
-	}
+        if not event.is_private:
+            try:
+                await bot(UpdatePinnedMessageRequest(peer=event.chat_id, id=msg.id, silent=True))
+            except:
+                pass
 
-	link := args[0]
-	chatUsername, msgID, err := extractChatAndMessageID(link)
-	if err != nil {
-		bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "❌ Invalid message link format."))
-		return
-	}
+    except Exception as e:
+        await event.reply(f"❌ Error: `{e}`")
 
-	isForwarding = true
-	cancelChannelID = update.Message.Chat.ID
+@bot.on(events.CallbackQuery(data=b'start_forward'))
+async def confirm_forward(event):
+    sender_id = event.sender_id
+    if sender_id not in forward_sessions:
+        return await event.answer("Session expired or not found.", alert=True)
 
-	cancelBtn := tgbotapi.NewInlineKeyboardMarkup(
-		tgbotapi.NewInlineKeyboardRow(
-			tgbotapi.NewInlineKeyboardButtonData("❌ Cancel", "cancel_forward"),
-		),
-	)
+    session = forward_sessions[sender_id]
+    src = session["src_entity"]
+    dst = session["dst_chat"]
+    start = session["start_id"]
+    end = session["end_id"]
 
-	startMsg := tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("⏩ Starting to forward from @%s, message ID: %d", chatUsername, msgID))
-	startMsg.ReplyMarkup = cancelBtn
-	bot.Send(startMsg)
+    await event.edit(
+        f"⏩ Forwarding messages from {start} to {end}...\n(This may take some time)"
+    )
 
-	// Forward messages one by one
-	for id := msgID; isForwarding; id++ {
-		fwd := tgbotapi.NewForward(update.Message.Chat.ID, "@"+chatUsername, id)
-		_, err := bot.Send(fwd)
-		if err != nil {
-			bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, fmt.Sprintf("⚠️ Stopped at message %d: %v", id, err)))
-			break
-		}
-		time.Sleep(time.Second)
-	}
+    forwarding_in_progress[sender_id] = True
 
-	bot.Send(tgbotapi.NewMessage(update.Message.Chat.ID, "✅ Forwarding complete."))
-}
+    msg_ids = list(range(start, end + 1))
+    batch_size = 100
 
-func handleCallbackQuery(cb *tgbotapi.CallbackQuery, bot *tgbotapi.BotAPI) {
-	if cb.Data == "cancel_forward" && cb.Message.Chat.ID == cancelChannelID {
-		isForwarding = false
-		edit := tgbotapi.NewEditMessageText(cb.Message.Chat.ID, cb.Message.MessageID, "❌ Forwarding cancelled.")
-		bot.Send(edit)
-	}
-}
+    try:
+        for i in range(0, len(msg_ids), batch_size):
+            if not forwarding_in_progress.get(sender_id):
+                break
+            batch = msg_ids[i:i + batch_size]
+            try:
+                await bot(ForwardMessagesRequest(
+                    from_peer=src,
+                    id=batch,
+                    to_peer=dst
+                ))
+                await asyncio.sleep(1.2)
+            except FloodWaitError as fw:
+                print(f"FloodWait: sleeping {fw.seconds}s")
+                await asyncio.sleep(fw.seconds)
+                continue
+            except Exception as e:
+                print(f"Batch failed ({batch[0]}-{batch[-1]}): {e}")
+                continue
 
-func extractChatAndMessageID(link string) (string, int, error) {
-	// Accepts formats like https://t.me/channel_name/1234
-	if !strings.Contains(link, "t.me/") {
-		return "", 0, fmt.Errorf("invalid link")
-	}
-	parts := strings.Split(link, "/")
-	if len(parts) < 5 {
-		return "", 0, fmt.Errorf("invalid format")
-	}
-	username := parts[3]
-	messageID, err := strconv.Atoi(parts[4])
-	if err != nil {
-		return "", 0, fmt.Errorf("invalid message id")
-	}
-	return username, messageID, nil
-}
+        if forwarding_in_progress.get(sender_id):
+            await bot.send_message(dst, "✅ Forwarding complete.")
+        else:
+            await bot.send_message(dst, "⛔ Forwarding cancelled.")
+
+    finally:
+        forward_sessions.pop(sender_id, None)
+        forwarding_in_progress.pop(sender_id, None)
+
+@bot.on(events.CallbackQuery(data=b'cancel_forward'))
+async def cancel_forward(event):
+    sender_id = event.sender_id
+    forwarding_in_progress[sender_id] = False
+    await event.edit("❌ Forwarding cancelled.")
+
+@bot.on(events.CallbackQuery(data=b'start_forward_pm'))
+async def from_welcome_forward(event):
+    await event.respond("Use this command to start:\n\n`/kidilo <chat/link> <start_id> <end_id>`")
+    await event.edit("Instructions sent!")
+
+print("Bot running...")
+bot.run_until_disconnected()
