@@ -2,18 +2,27 @@ import asyncio
 import re
 from telethon import TelegramClient, events, Button
 from telethon.errors import FloodWaitError
-from telethon.tl.functions.messages import ForwardMessagesRequest, UpdatePinnedMessageRequest
+from telethon.tl.functions.messages import UpdatePinnedMessageRequest
+from pyrogram import Client as PyrogramClient
+from pyrogram.errors import FloodWait
 
 # ==== CONFIG ====
-api_id = 23416992
-api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
-bot_token = '7666600493:AAGCCLNZQspatmzwylmcpM-AQUo1FI2FYMA'
+api_id = 23416992  # Your API ID (replace with your own)
+api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'  # Your API hash (replace with your own)
+bot_token = '7666600493:AAGCCLNZQspatmzwylmcpM-AQUo1FI2FYMA'  # Your bot token (replace with your own)
+pyrogram_session = "pyrogram_session"  # Pyrogram session name
 # ===============
 
+# Initialize Telethon Client for bot (telethon)
 bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
+
+# Initialize Pyrogram Client (pyrogram)
+pyrogram_bot = PyrogramClient(pyrogram_session, api_id, api_hash).start()
 
 forward_sessions = {}
 forwarding_in_progress = {}
+
+# === Telethon Bot Handlers ===
 
 @bot.on(events.NewMessage(pattern='/start'))
 async def welcome(event):
@@ -31,6 +40,7 @@ async def start_forward(event):
     end_id = event.pattern_match.group(3)
 
     try:
+        # If the chat_input is a link, extract the chat and start ID.
         if chat_input.startswith("https://t.me/"):
             match = re.match(r'https?://t\.me/([^/]+)/(\d+)', chat_input)
             if not match:
@@ -50,11 +60,6 @@ async def start_forward(event):
             start_id = int(start_id)
             end_id = int(end_id) if end_id else start_id
             src_entity = await bot.get_entity(chat)
-
-        if event.is_group or event.is_channel:
-            permissions = await bot.get_permissions(event.chat_id, sender.id)
-            if not permissions.is_admin:
-                return await event.reply("❌ You must be an admin to use this command.")
 
         forward_sessions[sender.id] = {
             "src_entity": src_entity,
@@ -80,6 +85,8 @@ async def start_forward(event):
     except Exception as e:
         await event.reply(f"❌ Error: `{e}`")
 
+# === Confirmation and Forwarding Logic ===
+
 @bot.on(events.CallbackQuery(data=b'start_forward'))
 async def confirm_forward(event):
     sender_id = event.sender_id
@@ -92,33 +99,24 @@ async def confirm_forward(event):
     start = session["start_id"]
     end = session["end_id"]
 
-    await event.edit(
-        f"⏩ Forwarding messages from {start} to {end}...\n(This may take some time)"
-    )
+    await event.edit(f"⏩ Forwarding messages from {start} to {end}...\n(This may take some time)")
 
     forwarding_in_progress[sender_id] = True
 
-    msg_ids = list(range(start, end + 1))
-    batch_size = 100
-
+    # Forward the messages using Pyrogram for efficient resending
     try:
-        for i in range(0, len(msg_ids), batch_size):
+        for msg_id in range(start, end + 1):
             if not forwarding_in_progress.get(sender_id):
                 break
-            batch = msg_ids[i:i + batch_size]
             try:
-                await bot(ForwardMessagesRequest(
-                    from_peer=src,
-                    id=batch,
-                    to_peer=dst
-                ))
+                message = await pyrogram_bot.get_messages(src, msg_id)
+                await pyrogram_bot.forward_messages(dst, message.id, chat_id=dst)
                 await asyncio.sleep(1.2)
-            except FloodWaitError as fw:
-                print(f"FloodWait: sleeping {fw.seconds}s")
-                await asyncio.sleep(fw.seconds)
-                continue
+            except FloodWait as fw:
+                print(f"FloodWait: sleeping {fw.x} seconds")
+                await asyncio.sleep(fw.x)
             except Exception as e:
-                print(f"Batch failed ({batch[0]}-{batch[-1]}): {e}")
+                print(f"Error with message {msg_id}: {e}")
                 continue
 
         if forwarding_in_progress.get(sender_id):
@@ -141,5 +139,6 @@ async def from_welcome_forward(event):
     await event.respond("Use this command to start:\n\n`/kidilo <chat/link> <start_id> <end_id>`")
     await event.edit("Instructions sent!")
 
+# === Running the Bot ===
 print("Bot running...")
 bot.run_until_disconnected()
