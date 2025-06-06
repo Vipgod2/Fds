@@ -2,20 +2,17 @@ import asyncio
 import re
 from telethon import TelegramClient, events, Button
 from telethon.tl.functions.messages import ForwardMessagesRequest, UpdatePinnedMessageRequest
-from telethon.tl.types import MessageMediaPhoto, MessageMediaDocument
 
 # ==== CONFIG ====
 api_id = 23416992
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
-bot_token = '8123499594:AAEKktirHvejXL5-T8fhq211b7jmTML1kG0'
-LOG_GROUP_ID = -1002500724893 # Replace with your log group ID
+bot_token = '7666600493:AAEGhUx5e8PwES9uC99ml-QBi9mKH9ARkaU'
 # ===============
 
 bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
 
 forward_sessions = {}
 forwarding_in_progress = {}
-
 
 @bot.on(events.NewMessage(pattern=r'/kidilo ([\S]+)(?:\s+(\d+))?(?:\s+(\d+))?'))
 async def start_forward(event):
@@ -39,7 +36,6 @@ async def start_forward(event):
 
         src_entity = await bot.get_entity(chat)
 
-        # If no start_id, fetch latest message with media or text
         if not start_id:
             messages = await bot.get_messages(src_entity, limit=10)
             latest_msg = next((m for m in messages if m.media or m.message), None)
@@ -85,7 +81,7 @@ async def confirm_forward(event):
     start = session["start_id"]
     end = session["end_id"]
 
-    msg = await event.edit(
+    await event.edit(
         f"⏩ Forwarding messages from {start} to {end}...",
         buttons=[[Button.inline("❌ Cancel", b'cancel_forward')]]
     )
@@ -97,22 +93,12 @@ async def confirm_forward(event):
             if not forwarding_in_progress.get(sender_id):
                 break
             try:
-                forwarded = await bot(ForwardMessagesRequest(
+                await bot(ForwardMessagesRequest(
                     from_peer=src,
                     id=[msg_id],
                     to_peer=dst
                 ))
-
-                # Fetch original message to check media
-                original = await bot.get_messages(src, ids=msg_id)
-                if original and (original.media or original.message):
-                    await bot(ForwardMessagesRequest(
-                        from_peer=src,
-                        id=[msg_id],
-                        to_peer=LOG_GROUP_ID
-     
-                    ))
-await asyncio.sleep(1.2)
+                await asyncio.sleep(1.2)
             except Exception as e:
                 print(f"Failed to forward {msg_id}: {e}")
                 continue
@@ -134,7 +120,7 @@ async def cancel_forward(event):
 
 @bot.on(events.CallbackQuery(data=b'start_forward_pm'))
 async def from_welcome_forward(event):
-    msg = await event.respond("Use this command:\n\n/kidilo <chat> or /kidilo <chat> <start_id> <end_id>")
+    await event.respond("Use this command:\n\n/kidilo <chat> or /kidilo <chat> <start_id> <end_id>")
     await event.edit("Instructions sent!")
 
 print("Bot running...")
