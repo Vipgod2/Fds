@@ -1,7 +1,7 @@
 import asyncio
 import re
 from telethon import TelegramClient, events, Button
-from telethon.tl.functions.messages import ForwardMessagesRequest, UpdatePinnedMessageRequest
+from telethon.tl.functions.messages import UpdatePinnedMessageRequest
 
 # ==== CONFIG ====
 api_id = 23416992
@@ -93,11 +93,11 @@ async def confirm_forward(event):
             if not forwarding_in_progress.get(sender_id):
                 break
             try:
-                await bot(ForwardMessagesRequest(
-                    from_peer=src,
-                    id=[msg_id],
-                    to_peer=dst
-                ))
+                msg = await bot.get_messages(src, ids=msg_id)
+                if msg and msg.media:
+                    await bot.send_file(dst, file=msg.media, caption="")
+                elif msg and msg.message:
+                    await bot.send_message(dst, msg.message)
                 await asyncio.sleep(1.2)
             except Exception as e:
                 print(f"Failed to forward {msg_id}: {e}")
