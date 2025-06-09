@@ -6,7 +6,7 @@ from telethon.tl.functions.messages import UpdatePinnedMessageRequest
 # ==== CONFIG ====
 api_id = 23416992
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
-bot_token = '7666600493:AAEGhUx5e8PwES9uC99ml-QBi9mKH9ARkaU'
+bot_token = '7661143113:AAFT7LEg4EKmar0gFt4wuojw1PVgLQZjSEw'
 # ===============
 
 bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
