@@ -11,12 +11,13 @@ bot_token = '7661143113:AAFT7LEg4EKmar0gFt4wuojw1PVgLQZjSEw'
 bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
 
 @bot.on(events.NewMessage(pattern=r'/kidilo ([\S]+)(?:\s+(\d+))?(?:\s+(\d+))?'))
-async def start_forward(event):
+async def forward_messages(event):
     chat_input = event.pattern_match.group(1)
     start_id = event.pattern_match.group(2)
     end_id = event.pattern_match.group(3)
 
     try:
+        # Parse chat info from link or ID
         if chat_input.startswith("https://t.me/"):
             match = re.match(r'https?://t\.me/([^/]+)/(\d+)?', chat_input)
             if not match:
@@ -31,6 +32,7 @@ async def start_forward(event):
 
         src_entity = await bot.get_entity(chat)
 
+        # Get latest message if no ID provided
         if not start_id:
             messages = await bot.get_messages(src_entity, limit=10)
             latest_msg = next((m for m in messages if m.media or m.message), None)
@@ -42,22 +44,23 @@ async def start_forward(event):
 
         await event.reply(f"⏩ Forwarding messages from {start_id} to {end_id}...")
 
+        # Forwarding loop with delay
         for msg_id in range(start_id, end_id + 1):
             try:
                 msg = await bot.get_messages(src_entity, ids=msg_id)
                 if msg and msg.media:
-                    await bot.send_file(event.chat_id, file=msg.media, caption=msg.text or "")
+                    await bot.send_file(event.chat_id, file=msg.media)  # No caption
                 elif msg and msg.text:
                     await bot.send_message(event.chat_id, msg.text)
-                await asyncio.sleep(1)
+                await asyncio.sleep(1.2)  # Safe delay
             except Exception as e:
-                print(f"Failed to forward {msg_id}: {e}")
+                print(f"❌ Failed to forward message {msg_id}: {e}")
                 continue
 
-        await bot.send_message(event.chat_id, "✅ Forwarding complete.")
+        await event.reply("✅ Forwarding complete.")
 
     except Exception as e:
         await event.reply(f"❌ Error: {e}")
 
-print("Bot running...")
+print("🤖 Bot is running...")
 bot.run_until_disconnected()
