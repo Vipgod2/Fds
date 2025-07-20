@@ -5,7 +5,7 @@ from telethon import TelegramClient, events
 # ==== CONFIG ====
 api_id = 23416992
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
-bot_token = '7661143113:AAFT7LEg4EKmar0gFt4wuojw1PVgLQZjSEw'
+bot_token = '8185486294:AAH1Zk30VvNuHEf3zZIWx0IjmZuhIPgaAmA'
 # ===============
 
 bot = TelegramClient('forwardbot', api_id, api_hash).start(bot_token=bot_token)
