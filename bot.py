@@ -5,85 +5,92 @@ from telethon import TelegramClient, events
 # === CONFIG ===
 api_id = 23416992
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
-
 bot_tokens = [
-    '8361725713:AAFAvAzrhTDpLib4pK__C36EGZvemBHbMyM',  # Fetcher bot (in source group)
-    '8350221175:AAFxpkg9BASmXJpd-xdIQID7451e-TW4rb8',  # Sender bot
-    #'BOT_TOKEN_3',  # Sender bot
+    '8361725713:AAFAvAzrhTDpLib4pK__C36EGZvemBHbMyM',
+    '8350221175:AAFxpkg9BASmXJpd-xdIQID7451e-TW4rb8',
+    # Add more tokens
 ]
+# ===============
 
+# Store bots and their clients globally
 bot_clients = []
-message_queue = asyncio.Queue()
 
-async def fetch_messages(client, chat, start_id, end_id):
-    print(f"📥 Fetching {start_id} to {end_id}")
+
+def split_range(start, end, parts):
+    step = (end - start + 1) // parts
+    ranges = []
+    for i in range(parts):
+        s = start + i * step
+        e = (start + (i + 1) * step - 1) if i < parts - 1 else end
+        ranges.append((s, e))
+    return ranges
+
+
+async def forward_range(client, bot_index, chat, src_entity, start_id, end_id, target_chat_id):
+    print(f"🚀 Bot {bot_index} handling range {start_id} to {end_id}")
     for msg_id in range(start_id, end_id + 1):
         try:
-            msg = await client.get_messages(chat, ids=msg_id)
-            if msg:
-                await message_queue.put(msg)
+            msg = await client.get_messages(src_entity, ids=msg_id)
+            if msg and msg.media:
+                await client.send_file(target_chat_id, file=msg.media)
+            elif msg and msg.text:
+                await client.send_message(target_chat_id, msg.text)
+            await asyncio.sleep(1.2)
         except Exception as e:
-            print(f"❌ Fetch error {msg_id}: {e}")
-        await asyncio.sleep(0.5)  # avoid floodwait
-    print("✅ Fetch complete")
-    await message_queue.put(None)  # signal end
+            print(f"❌ Bot {bot_index} failed on msg {msg_id}: {e}")
+            continue
+    print(f"✅ Bot {bot_index} finished range {start_id}-{end_id}")
 
-async def send_messages(client, bot_index, target_chat):
-    while True:
-        msg = await message_queue.get()
-        if msg is None:
-            message_queue.put_nowait(None)  # pass signal to others
-            break
-        try:
-            if msg.media:
-                await client.send_file(target_chat, msg.media, caption=msg.text or "")
-            else:
-                await client.send_message(target_chat, msg.text)
-            print(f"📤 Bot {bot_index} sent message {msg.id}")
-        except Exception as e:
-            print(f"❌ Send error Bot {bot_index}: {e}")
-        await asyncio.sleep(1.2)
 
 async def main():
-    # Start all bots
+    # Initialize all bots
     for i, token in enumerate(bot_tokens):
-        client = TelegramClient(f"bot_session_{i+1}", api_id, api_hash)
+        session_name = f'bot_session_{i + 1}'
+        client = TelegramClient(session_name, api_id, api_hash)
         await client.start(bot_token=token)
-        bot_clients.append((i+1, client))
-    print(f"✅ {len(bot_clients)} bots ready")
+        bot_clients.append((i + 1, client))
 
-    fetcher_bot = bot_clients[0][1]  # first bot fetches messages
-    command_bot = fetcher_bot  # listens for /kidilo command
+    print(f"✅ {len(bot_clients)} bots are ready.")
 
-    @command_bot.on(events.NewMessage(pattern=r'/kidilo ([\S]+) (\d+) (\d+)'))
+    # Use first bot to listen for commands
+    command_bot_index, command_client = bot_clients[0]
+
+    @command_client.on(events.NewMessage(pattern=r'/kidilo ([\S]+)(?:\s+(\d+))?(?:\s+(\d+))?'))
     async def handle_command(event):
         chat_input = event.pattern_match.group(1)
         start_id = int(event.pattern_match.group(2))
         end_id = int(event.pattern_match.group(3))
-        target_chat = event.chat_id
+        target_chat_id = event.chat_id  # reply to same chat
 
-        if chat_input.startswith("https://t.me/"):
-            match = re.match(r'https?://t\.me/([^/]+)', chat_input)
-            chat = match.group(1) if match else None
-        else:
-            chat = int(chat_input) if chat_input.lstrip("-").isdigit() else chat_input
+        try:
+            if chat_input.startswith("https://t.me/"):
+                match = re.match(r'https?://t\.me/([^/]+)/(\d+)?', chat_input)
+                if not match:
+                    return await event.reply("❌ Invalid link.")
+                chat = match.group(1)
+            else:
+                chat = int(chat_input) if chat_input.lstrip("-").isdigit() else chat_input
 
-        if not chat:
-            return await event.reply("❌ Invalid chat")
+            src_entity = await command_client.get_entity(chat)
 
-        src_entity = await fetcher_bot.get_entity(chat)
+            # Split message range for each bot
+            chunks = split_range(start_id, end_id, len(bot_clients))
 
-        await event.reply(f"🚀 Fetching messages {start_id} to {end_id}...")
-        fetch_task = asyncio.create_task(fetch_messages(fetcher_bot, src_entity, start_id, end_id))
+            # Start forwarding using each bot
+            tasks = []
+            for i, (bot_index, client) in enumerate(bot_clients):
+                s_id, e_id = chunks[i]
+                task = forward_range(client, bot_index, chat, src_entity, s_id, e_id, target_chat_id)
+                tasks.append(task)
 
-        send_tasks = [
-            asyncio.create_task(send_messages(client, idx, target_chat))
-            for idx, client in bot_clients[1:]
-        ]
+            await event.reply(f"🚀 Forwarding messages {start_id} to {end_id} using {len(bot_clients)} bots...")
+            await asyncio.gather(*tasks)
+            await event.reply("✅ All bots finished forwarding.")
 
-        await asyncio.gather(fetch_task, *send_tasks)
-        await event.reply("✅ Done sending all messages!")
+        except Exception as e:
+            await event.reply(f"❌ Error: {e}")
 
-    await command_bot.run_until_disconnected()
+    await command_client.run_until_disconnected()
+
 
 asyncio.run(main())
