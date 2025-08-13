@@ -9,7 +9,7 @@ api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
 bot_tokens = [
     '8361725713:AAFAvAzrhTDpLib4pK__C36EGZvemBHbMyM',  # Fetcher bot (in source group)
     '8350221175:AAFxpkg9BASmXJpd-xdIQID7451e-TW4rb8',  # Sender bot
-    'BOT_TOKEN_3',  # Sender bot
+    #'BOT_TOKEN_3',  # Sender bot
 ]
 
 bot_clients = []
