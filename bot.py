@@ -7,7 +7,7 @@ api_id = 23416992
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
 
 bot_tokens = [
-    '8244631995:AAGW1uyEuQ1FFpDjo5QwDPIV4fqJTQOL4gI'
+    '8244631995:AAGW1uyEuQ1FFpDjo5QwDPIV4fqJTQOL4gI',
     '8350221175:AAF65CjdAO7HWOPnmlJpgM23KNo1cV2OjuA',
     '8361725713:AAEXZShGRxjT-VTGttgZRNFIzZyp4i6Aqr8',
     # Add more tokens here
