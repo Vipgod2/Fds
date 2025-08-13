@@ -1,6 +1,6 @@
 import asyncio
 import re
-from telethon import TelegramClient, events
+from telethon import TelegramClient, events, errors
 
 # === CONFIG ===
 api_id = 23416992
@@ -14,7 +14,6 @@ bot_tokens = [
 
 bot_clients = []
 
-
 def split_range(start, end, parts):
     step = (end - start + 1) // parts
     ranges = []
@@ -24,10 +23,8 @@ def split_range(start, end, parts):
         ranges.append((s, e))
     return ranges
 
-
 async def forward_range(client, bot_index, chat, start_id, end_id, target_chat_id):
-    print(f"🚀 Bot {bot_index} handling range {start_id} to {end_id}")
-    
+    print(f"🚀 Bot {bot_index} handling range {start_id}-{end_id}")
     try:
         src_entity = await client.get_entity(chat)
     except Exception as e:
@@ -37,16 +34,16 @@ async def forward_range(client, bot_index, chat, start_id, end_id, target_chat_i
     for msg_id in range(start_id, end_id + 1):
         try:
             msg = await client.get_messages(src_entity, ids=msg_id)
-            if msg and msg.media:
-                await client.send_file(target_chat_id, file=msg.media)
-            elif msg and msg.text:
-                await client.send_message(target_chat_id, msg.text)
-            await asyncio.sleep(1.2)
+            if msg:
+                await client.copy_message(target_chat_id, src_entity, msg.id)
+            await asyncio.sleep(1)  # adjust speed if needed
+        except errors.FloodWaitError as e:
+            print(f"⚠ Bot {bot_index} hit FloodWait: sleeping {e.seconds}s")
+            await asyncio.sleep(e.seconds + 1)
         except Exception as e:
             print(f"❌ Bot {bot_index} failed on msg {msg_id}: {e}")
             continue
     print(f"✅ Bot {bot_index} finished range {start_id}-{end_id}")
-
 
 async def main():
     # Start all bot sessions
@@ -82,11 +79,10 @@ async def main():
             s_id, e_id = chunks[i]
             tasks.append(forward_range(client, bot_index, chat, s_id, e_id, target_chat_id))
 
-        await event.reply(f"🚀 Forwarding {start_id} to {end_id} using {len(bot_clients)} bots...")
+        await event.reply(f"🚀 Forwarding {start_id}-{end_id} using {len(bot_clients)} bots...")
         await asyncio.gather(*tasks)
         await event.reply("✅ All bots finished forwarding.")
 
     await command_client.run_until_disconnected()
-
 
 asyncio.run(main())
