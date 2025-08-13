@@ -5,15 +5,17 @@ from telethon import TelegramClient, events, errors
 # === CONFIG ===
 api_id = 23416992
 api_hash = 'bebe7b8b7bc74aeaa08f658e8aa799fe'
+
 bot_tokens = [
     '8361725713:AAFAvAzrhTDpLib4pK__C36EGZvemBHbMyM',
     '8350221175:AAFxpkg9BASmXJpd-xdIQID7451e-TW4rb8',
     # Add more tokens here
 ]
-# ===============
+# =====================
 
 bot_clients = []
 
+# Split message range evenly among bots
 def split_range(start, end, parts):
     step = (end - start + 1) // parts
     ranges = []
@@ -23,6 +25,7 @@ def split_range(start, end, parts):
         ranges.append((s, e))
     return ranges
 
+# Forward messages using copy_message
 async def forward_range(client, bot_index, chat, start_id, end_id, target_chat_id):
     print(f"🚀 Bot {bot_index} handling range {start_id}-{end_id}")
     try:
@@ -45,6 +48,7 @@ async def forward_range(client, bot_index, chat, start_id, end_id, target_chat_i
             continue
     print(f"✅ Bot {bot_index} finished range {start_id}-{end_id}")
 
+# Main function
 async def main():
     # Start all bot sessions
     for i, token in enumerate(bot_tokens):
@@ -55,34 +59,42 @@ async def main():
 
     print(f"✅ {len(bot_clients)} bots are ready.")
 
+    # First bot listens for commands
     command_bot_index, command_client = bot_clients[0]
 
     @command_client.on(events.NewMessage(pattern=r'/kidilo ([\S]+)\s+(\d+)\s+(\d+)'))
     async def handle_command(event):
-        chat_input = event.pattern_match.group(1)
-        start_id = int(event.pattern_match.group(2))
-        end_id = int(event.pattern_match.group(3))
-        target_chat_id = event.chat_id
+        try:
+            chat_input = event.pattern_match.group(1)
+            start_id = int(event.pattern_match.group(2))
+            end_id = int(event.pattern_match.group(3))
+            target_chat_id = event.chat_id
 
-        if chat_input.startswith("https://t.me/"):
-            match = re.match(r'https?://t\.me/([^/]+)/?', chat_input)
-            if not match:
-                return await event.reply("❌ Invalid link.")
-            chat = match.group(1)
-        else:
-            chat = int(chat_input) if chat_input.lstrip("-").isdigit() else chat_input
+            # Parse chat input (link or username/ID)
+            if chat_input.startswith("https://t.me/"):
+                match = re.match(r'https?://t\.me/([^/]+)/?', chat_input)
+                if not match:
+                    return await event.reply("❌ Invalid link.")
+                chat = match.group(1)
+            else:
+                chat = int(chat_input) if chat_input.lstrip("-").isdigit() else chat_input
 
-        chunks = split_range(start_id, end_id, len(bot_clients))
+            # Split range among bots
+            chunks = split_range(start_id, end_id, len(bot_clients))
+            tasks = []
+            for i, (bot_index, client) in enumerate(bot_clients):
+                s_id, e_id = chunks[i]
+                tasks.append(forward_range(client, bot_index, chat, s_id, e_id, target_chat_id))
 
-        tasks = []
-        for i, (bot_index, client) in enumerate(bot_clients):
-            s_id, e_id = chunks[i]
-            tasks.append(forward_range(client, bot_index, chat, s_id, e_id, target_chat_id))
+            await event.reply(f"🚀 Forwarding {start_id}-{end_id} using {len(bot_clients)} bots...")
+            await asyncio.gather(*tasks)
+            await event.reply("✅ All bots finished forwarding.")
 
-        await event.reply(f"🚀 Forwarding {start_id}-{end_id} using {len(bot_clients)} bots...")
-        await asyncio.gather(*tasks)
-        await event.reply("✅ All bots finished forwarding.")
+        except Exception as e:
+            print(f"❌ Command handler error: {e}")
+            await event.reply(f"❌ Error: {e}")
 
     await command_client.run_until_disconnected()
 
+# Run the bot
 asyncio.run(main())
